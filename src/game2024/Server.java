@@ -5,59 +5,53 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class Server {
-    private static List<ServerThread> threads = new ArrayList<>();
+    private static final List<ServerThread> threads = new CopyOnWriteArrayList<>();
 
-    //Send players og / eller sockets med ind i tråden?
     public static void main(String[] args) throws Exception {
         int port = 6789;
 
-        ServerSocket welcomeSocket = new ServerSocket(port);
+        try (ServerSocket welcomeSocket = new ServerSocket(port)) {
+            System.out.println("Venter på klient...");
+            System.out.println("Lytter på port " + port);
 
-        System.out.println("Venter på klient...");
-        System.out.println("Lytter på port " + port);
+            while (true) {
+                Socket connectionSocket = welcomeSocket.accept();
+                System.out.println("Three-way handshake completed.");
 
-        while (true) {
-            Socket connectionSocket = welcomeSocket.accept();
-            System.out.println("Three-way handshake completed.");
+                BufferedReader inFromClient = new BufferedReader(new InputStreamReader(connectionSocket.getInputStream()));
+                String connectionInfo = inFromClient.readLine();
+                if (connectionInfo == null) {
+                    connectionSocket.close();
+                    continue;
+                }
 
-            BufferedReader inFromClient = new BufferedReader(new InputStreamReader(connectionSocket.getInputStream()));
+                ServerThread serverThread = new ServerThread(connectionSocket, inFromClient);
+                int playerCount;
+                synchronized (Server.class) {
+                    threads.add(serverThread);
+                    playerCount = threads.size();
+                }
+                serverThread.start();
 
-            String connectionInfo = inFromClient.readLine();
-
-            ServerThread serverThread = new ServerThread(connectionSocket, inFromClient);
-
-            serverThread.start();
-            threads.add(serverThread);
-
-            connectionInfo += " " + threads.size();
-            System.out.println(connectionInfo);
-            broadcast(connectionInfo);
-
-            System.out.println("Ny klient forbundet.");
+                broadcast(connectionInfo + " " + playerCount);
+                System.out.println("Ny klient forbundet.");
+            }
         }
-
     }
 
-    //    I did a thing!
-    public synchronized static void broadcast(String command) throws IOException {
+    // Holding the lock while enqueueing gives every client the same message order;
+    // the actual socket writes happen on each client's own writer thread.
+    public static synchronized void broadcast(String command) {
         for (ServerThread st : threads) {
-            st.listenForChanges(command);
+            st.send(command);
         }
     }
 
-    //    I'm doing a thing!
-    public static boolean removeClient(ServerThread thread) {
-        boolean toReturn;
-        if (toReturn = threads.contains(thread)) {
-            System.out.println(threads.size());
-            threads.remove(thread);
-            System.out.println(threads.size());
-        }
-        return toReturn;
+    public static synchronized boolean removeClient(ServerThread thread) {
+        return threads.remove(thread);
     }
-
 }

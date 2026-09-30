@@ -4,45 +4,63 @@ import java.io.BufferedReader;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.Socket;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 
 public class ServerThread extends Thread {
-    Socket connSocket;
-    DataOutputStream outToClient;
-    BufferedReader inFromClient;
+    private static final String POISON = "\u0000";
 
+    private final Socket connSocket;
+    private final DataOutputStream outToClient;
+    private final BufferedReader inFromClient;
+    private final BlockingQueue<String> outbox = new LinkedBlockingQueue<>();
+    private final Thread writer;
 
     public ServerThread(Socket connSocket, BufferedReader inFromClient) throws IOException {
         this.connSocket = connSocket;
         this.inFromClient = inFromClient;
-        outToClient = new DataOutputStream(connSocket.getOutputStream());
+        this.outToClient = new DataOutputStream(connSocket.getOutputStream());
+        this.writer = new Thread(this::drainOutbox, "writer-" + connSocket.getRemoteSocketAddress());
+        this.writer.setDaemon(true);
     }
 
     @Override
     public void run() {
+        writer.start();
         try {
-            // Do the work and the communication with the client here
             String sentence;
-            while (!connSocket.isClosed()) {
-                if ((sentence = inFromClient.readLine()) != null) {
-                    Server.broadcast(sentence);
-                }
+            while ((sentence = inFromClient.readLine()) != null) {
+                Server.broadcast(sentence);
             }
-            Server.removeClient(this);
-            inFromClient.close();
-            outToClient.close();
         } catch (IOException e) {
-            e.printStackTrace();
+            System.out.println("Forbindelse tabt: " + e.getMessage());
+        } finally {
+            disconnect();
         }
     }
 
+    public void send(String command) {
+        outbox.offer(command);
+    }
 
-    //    by Maintz
-    public void listenForChanges(String command) {
+    private void drainOutbox() {
         try {
-            outToClient.writeBytes(command + "\n");
-        } catch (IOException e) {
-            e.printStackTrace();
+            String command;
+            while (!(command = outbox.take()).equals(POISON)) {
+                outToClient.writeBytes(command + "\n");
+            }
+        } catch (IOException | InterruptedException e) {
+            disconnect();
         }
     }
 
+    private void disconnect() {
+        if (Server.removeClient(this)) {
+            outbox.offer(POISON);
+            try {
+                connSocket.close();
+            } catch (IOException ignored) {
+            }
+        }
+    }
 }
