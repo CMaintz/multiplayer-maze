@@ -51,34 +51,11 @@ public class GUI extends Application {
     private static String myName;
     public static Player me;
     public static Map<String, Player> playerMap = new HashMap<>();
-    private static String[] spawnPoints = {"1 1", "17 1", "4 14", "16 17", "11 10", "5 7"};
     private int connectedClients = -1;
     private boolean isFrozen = false;
     private Label[][] fields;
     private TextArea scoreList;
-
-    private String[] board = {    // 20x20
-            "wwwwwwwwwwwwwwwwwwww",
-            "w        ww        w",
-            "w w  w  www w  w  ww",
-            "w w  w   ww w  w  ww",
-            "w  w               w",
-            "w w w w w w w  w  ww",
-            "w w     www w  w  ww",
-            "w w     w w w  w  ww",
-            "w   w w  w  w  w   w",
-            "w     w  w  w  w   w",
-            "w ww ww        w  ww",
-            "w  w w    w    w  ww",
-            "w        ww w  w  ww",
-            "w         w w  w  ww",
-            "w        w     w  ww",
-            "w  w              ww",
-            "w  w www  w w  ww ww",
-            "w w      ww w     ww",
-            "w   w   ww  w      w",
-            "wwwwwwwwwwwwwwwwwwww"
-    };
+    private final GameState state = new GameState(playerMap);
 
 
     // -------------------------------------------
@@ -115,7 +92,7 @@ public class GUI extends Application {
             fields = new Label[20][20];
             for (int j = 0; j < 20; j++) {
                 for (int i = 0; i < 20; i++) {
-                    switch (board[j].charAt(i)) {
+                    switch (GameState.BOARD[j].charAt(i)) {
                         case 'w':
                             fields[i][j] = new Label("", new ImageView(image_wall));
                             break;
@@ -123,7 +100,7 @@ public class GUI extends Application {
                             fields[i][j] = new Label("", new ImageView(image_floor));
                             break;
                         default:
-                            throw new Exception("Illegal field value: " + board[j].charAt(i));
+                            throw new Exception("Illegal field value: " + GameState.BOARD[j].charAt(i));
                     }
                     boardGrid.add(fields[i][j], i, j);
                 }
@@ -185,91 +162,14 @@ public class GUI extends Application {
         return b.toString();
     }
 
-    //Siger hvor spillere er
-    public Player getPlayerAt(int x, int y) {
-        for (Player p : playerMap.values()) {
-            if (p.getXpos() == x && p.getYpos() == y) {
-                return p;
-            }
-        }
-        return null;
-    }
-
     public void playerMoved(int delta_x, int delta_y, String direction, Player player) {
-        player.setDirection(direction);
         int x = player.getXpos(), y = player.getYpos();
-
-        if (isAWall(x + delta_x, y + delta_y)) {
-            player.addPoints(-1);
-        } else {
-            Player p = getPlayerAt(x + delta_x, y + delta_y);
-            if (p != null) {
-                player.addPoints(10);
-                p.addPoints(-10);
-            } else {
-                player.addPoints(1);
-
-                resetFloor(x, y);
-                x += delta_x;
-                y += delta_y;
-
-                player.setXpos(x);
-                player.setYpos(y);
-                player.setDirection(direction);
-            }
+        if (state.move(player, delta_x, delta_y, direction) == GameState.MoveResult.MOVED) {
+            resetFloor(x, y);
         }
-        renderPlayer(x, y, direction);
+        renderPlayer(player.getXpos(), player.getYpos(), direction);
         System.out.println("X-pos:" + player.getXpos() + " Y-pos: " + player.getYpos());
         scoreList.setText(getScoreList());
-    }
-
-    private boolean isAWall(int x, int y) {
-        return board[y].charAt(x) == 'w';
-    }
-
-    private String getDeterministicSpawnPoint(String playername) {
-        // Brug spillerens nuværende position som input
-        //        int hashValue = (player.getXpos() + ":" + player.getYpos()).hashCode();
-        int hashValue = 0;
-        if (playerMap.containsKey(playername)) {
-            Player player = playerMap.get(playername);
-            hashValue = (player.getXpos() + ":" + player.getYpos()).hashCode();
-        } else {
-            hashValue = myName.hashCode();
-        }
-        // Brug hash-værdien til at vælge et spawn-point
-        int spawnIndex = Math.abs(hashValue) % spawnPoints.length;
-        String coordinates = spawnPoints[spawnIndex];
-
-        // Find ledig plads, hvis nødvendigt
-        int spawnX = Integer.parseInt(coordinates.split(" ")[0]);
-        int spawnY = Integer.parseInt(coordinates.split(" ")[1]);
-        while (getPlayerAt(spawnX, spawnY) != null) {
-            spawnIndex = (spawnIndex + 1) % spawnPoints.length;
-            coordinates = spawnPoints[spawnIndex];
-            spawnX = Integer.parseInt(coordinates.split(" ")[0]);
-            spawnY = Integer.parseInt(coordinates.split(" ")[1]);
-        }
-
-        return coordinates;
-    }
-
-    private void spawnPlayer(Player player) {
-        String[] spawnCoordinates = getDeterministicSpawnPoint(player.getName()).split(" ");
-        int spawnX = Integer.parseInt(spawnCoordinates[0]);
-        int spawnY = Integer.parseInt(spawnCoordinates[1]);
-
-        player.setXpos(spawnX);
-        player.setYpos(spawnY);
-        renderPlayer(spawnX, spawnY, "up");
-    }
-
-    public void playerDied(Player shooter, Player deadPlayer) {
-        spawnPlayer(deadPlayer);
-        deadPlayer.setPoint(deadPlayer.getPoint() - 50);
-        shooter.setPoint(shooter.getPoint() + 50);
-        scoreList.setText(getScoreList());
-
     }
 
     public void renderPlayer(int x, int y, String direction) {
@@ -298,29 +198,18 @@ public class GUI extends Application {
     }
 
     private void pewPew(String name, int delta_x, int delta_y, String direction) {
-        Player murderer = playerMap.get(name);
-
-        int x_coord = murderer.getXpos(), y_coord = murderer.getYpos();
-        int delta_X = delta_x, delta_Y = delta_y;
-
-        renderLazer(x_coord += delta_X, y_coord += delta_Y, direction, true, false);
-
-        while (!isAWall(x_coord + delta_X, y_coord + delta_Y)) {
-
-            Player hitPlayer = getPlayerAt(x_coord, y_coord);
-            if (hitPlayer != null) {
-                playerDied(murderer, getPlayerAt(x_coord, y_coord));
+        state.shoot(playerMap.get(name), delta_x, delta_y, new GameState.ShotListener() {
+            @Override
+            public void beam(int x, int y, boolean start, boolean end) {
+                renderLazer(x, y, direction, start, end);
             }
-            x_coord += delta_X;
-            y_coord += delta_Y;
-            renderLazer(x_coord, y_coord, direction, false, false);
 
-        }
-        Player hitPlayer = getPlayerAt(x_coord, y_coord);
-        if (hitPlayer != null) {
-            playerDied(murderer, getPlayerAt(x_coord, y_coord));
-        }
-        renderLazer(x_coord, y_coord, direction, false, true);
+            @Override
+            public void killed(Player shooter, Player victim) {
+                renderPlayer(victim.getXpos(), victim.getYpos(), "up");
+                scoreList.setText(getScoreList());
+            }
+        });
     }
 
     private void renderLazer(int x, int y, String direction, boolean start, boolean end) {
@@ -435,7 +324,7 @@ public class GUI extends Application {
 
     public void createAndRegisterSelf() {
         if (me == null) {
-            String[] spawnCoordinates = getDeterministicSpawnPoint(myName).split(" ");
+            String[] spawnCoordinates = state.spawnPointFor(myName).split(" ");
             int spawnX = Integer.parseInt(spawnCoordinates[0]);
             int spawnY = Integer.parseInt(spawnCoordinates[1]);
             // Opretter egen spiller
@@ -445,7 +334,7 @@ public class GUI extends Application {
 
     public void createPlayer(String name, int xpos, int ypos, String direction, int points) {
         if (playerMap.get(name) == null) {
-            if (getPlayerAt(xpos, ypos) == null) {
+            if (state.playerAt(xpos, ypos) == null) {
                 Player newPlayer = new Player(name, xpos, ypos, direction);
                 playerMap.put(name, newPlayer);
 
@@ -487,7 +376,7 @@ public class GUI extends Application {
         } else if (direction.equalsIgnoreCase("right")) {
             delta_X = 1;
         }
-        if (!isAWall(x_coord + delta_X, y_coord + delta_Y) && !isAWall(x_coord + (2 * delta_X), y_coord + (2 * delta_Y))) {
+        if (!state.isWall(x_coord + delta_X, y_coord + delta_Y) && !state.isWall(x_coord + (2 * delta_X), y_coord + (2 * delta_Y))) {
             isFrozen = true;
             outToServer.writeBytes("PEWPEW " + myName + " " +
                     delta_X + " " + delta_Y + " " + me.getDirection() + "\n");
