@@ -17,30 +17,37 @@ public class Server {
         try (ServerSocket welcomeSocket = new ServerSocket(port)) {
             System.out.println("Venter på klient...");
             System.out.println("Lytter på port " + port);
-
-            while (true) {
-                Socket connectionSocket = welcomeSocket.accept();
-                System.out.println("Three-way handshake completed.");
-
-                BufferedReader inFromClient = new BufferedReader(new InputStreamReader(connectionSocket.getInputStream()));
-                String connectionInfo = inFromClient.readLine();
-                if (connectionInfo == null) {
-                    connectionSocket.close();
-                    continue;
-                }
-
-                ServerThread serverThread = new ServerThread(connectionSocket, inFromClient);
-                int playerCount;
-                synchronized (Server.class) {
-                    threads.add(serverThread);
-                    playerCount = threads.size();
-                }
-                serverThread.start();
-
-                broadcast(connectionInfo + " " + playerCount);
-                System.out.println("Ny klient forbundet.");
-            }
+            serve(welcomeSocket);
         }
+    }
+
+    static void serve(ServerSocket welcomeSocket) throws IOException {
+        while (true) {
+            Socket connectionSocket = welcomeSocket.accept();
+            System.out.println("Three-way handshake completed.");
+
+            BufferedReader inFromClient = new BufferedReader(new InputStreamReader(connectionSocket.getInputStream()));
+            String connectionInfo = inFromClient.readLine();
+            if (connectionInfo == null) {
+                connectionSocket.close();
+                continue;
+            }
+
+            ServerThread serverThread = new ServerThread(connectionSocket, inFromClient);
+            int playerCount;
+            synchronized (Server.class) {
+                threads.add(serverThread);
+                playerCount = threads.size();
+            }
+            serverThread.start();
+
+            broadcast(connectionInfo + " " + playerCount);
+            System.out.println("Ny klient forbundet.");
+        }
+    }
+
+    static int clientCount() {
+        return threads.size();
     }
 
     // Holding the lock while enqueueing gives every client the same message order;
