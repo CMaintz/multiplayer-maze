@@ -1,5 +1,6 @@
 package game2024;
 
+import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.DataOutputStream;
 import java.io.IOException;
@@ -19,7 +20,7 @@ public class ServerThread extends Thread {
     public ServerThread(Socket connSocket, BufferedReader inFromClient) throws IOException {
         this.connSocket = connSocket;
         this.inFromClient = inFromClient;
-        this.outToClient = new DataOutputStream(connSocket.getOutputStream());
+        this.outToClient = new DataOutputStream(new BufferedOutputStream(connSocket.getOutputStream()));
         this.writer = new Thread(this::drainOutbox, "writer-" + connSocket.getRemoteSocketAddress());
         this.writer.setDaemon(true);
     }
@@ -48,6 +49,9 @@ public class ServerThread extends Thread {
             String command;
             while (!(command = outbox.take()).equals(POISON)) {
                 outToClient.writeBytes(command + "\n");
+                if (outbox.isEmpty()) {
+                    outToClient.flush();
+                }
             }
         } catch (IOException | InterruptedException e) {
             disconnect();
