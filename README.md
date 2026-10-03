@@ -1,14 +1,14 @@
 # Multiplayer Maze
 
-A small networked maze game in Java 17 + JavaFX, built as coursework for *Distribuerede Informationssystemer* (3rd semester, Datamatiker, autumn 2024). The goal of the assignment was to practise sockets, threads and synchronisation.
+A small networked maze game in Java 17 and JavaFX, built as coursework for *Distribuerede Informationssystemer* (3rd semester, Datamatiker, autumn 2024). The goal of the assignment was to practise sockets, threads and synchronisation.
 
 Players move around a shared maze and shoot each other; every client renders the same game state.
 
 ## Architecture
 
-- **`Server`** accepts TCP connections on port 6789 and starts one `ServerThread` per client.
-- **`ServerThread`** reads commands from its client and hands them to `Server.broadcast`, which relays each command to every connected client. Clients apply commands locally (`MOVE`, `CONNECT`, `DISCONNECT`, `PEWPEW`, …).
-- **`GUI` / `App`** is the JavaFX client.
+- `Server` accepts TCP connections on port 6789 and starts one `ServerThread` per client.
+- `ServerThread` reads commands from its client and hands them to `Server.broadcast`, which relays each command to every connected client. Clients apply commands locally (`MOVE`, `CONNECT`, `DISCONNECT`, `PEWPEW`, …).
+- `GUI` / `App` is the JavaFX client.
 
 ### Concurrency
 
@@ -22,4 +22,4 @@ Open in IntelliJ (JavaFX SDK required), run `game2024.Server`, then start one `g
 
 ## Scoring
 
-+1 per move, −1 for walking into a wall, +10 for hitting another player, −10 for being hit.
++1 per move and −1 for walking into a wall. Walking into another player gives you +10 and them −10. Shooting someone is worth +50, and they lose 50 and respawn.
